@@ -6,63 +6,100 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"runtime"
 
 	"dagger.io/dagger"
-	goserver "github.com/kpenfound/hello-monorepo/services/go-server/build"
-	pyserver "github.com/kpenfound/hello-monorepo/services/py-server/build"
-	gouname "github.com/kpenfound/hello-monorepo/tools/go-uname/build"
 )
 
-func GoUname(ctx context.Context) {
-	client, err := dagger.Connect(ctx, dagger.WithLogOutput(os.Stdout))
-	if err != nil {
-		panic(err)
-	}
-	defer client.Close()
-	os, arch := getOsArch()
-
-	uname := gouname.Build(ctx, client, os, arch)
-
-	_, err = uname.Export(ctx, ".")
-	if err != nil {
-		panic(err)
-	}
-}
-
-func GoServer(ctx context.Context) {
-	client, err := dagger.Connect(ctx, dagger.WithLogOutput(os.Stdout))
-	if err != nil {
-		panic(err)
-	}
-	defer client.Close()
-	os, arch := getOsArch()
-
-	server := goserver.Build(ctx, client, os, arch)
-
-	_, err = server.Export(ctx, ".")
-	if err != nil {
-		panic(err)
-	}
-}
-
-func PyServerPush(ctx context.Context) {
+// file test.txt is removed
+func WorksWithFile(ctx context.Context) {
 	client, err := dagger.Connect(ctx, dagger.WithLogOutput(os.Stdout))
 	if err != nil {
 		panic(err)
 	}
 	defer client.Close()
 
-	build := pyserver.Build(ctx, client, "linux", "amd64")
-	image := pyserver.Image(ctx, client, build)
-	addr, err := pyserver.Push(ctx, image)
+	workdir := client.Host().Workdir()
+
+	dir := client.Directory().WithDirectory(".", workdir, dagger.DirectoryWithDirectoryOpts{
+		Exclude: []string{"test.txt"},
+	})
+
+	contents, _ := client.Container().
+		From("alpine:latest").
+		WithMountedDirectory("/host", dir).
+		Exec(dagger.ContainerExecOpts{
+			Args: []string{"ls", "/host", "-a"},
+		}).Stdout().Contents(ctx)
+
+	fmt.Println(contents)
+}
+
+// directory build is removed
+func WorksWithWorkdir(ctx context.Context) {
+	client, err := dagger.Connect(ctx, dagger.WithLogOutput(os.Stdout))
 	if err != nil {
 		panic(err)
 	}
+	defer client.Close()
 
-	fmt.Printf("Pushed py-server to %s\n", addr)
+	dir := client.Host().Workdir(dagger.HostWorkdirOpts{
+		Exclude: []string{"build"},
+	})
+
+	contents, _ := client.Container().
+		From("alpine:latest").
+		WithMountedDirectory("/host", dir).
+		Exec(dagger.ContainerExecOpts{
+			Args: []string{"ls", "/host", "-a"},
+		}).Stdout().Contents(ctx)
+
+	fmt.Println(contents)
 }
 
-func getOsArch() (string, string) {
-	return runtime.GOOS, runtime.GOARCH
+// directory build exists but is empty
+func WorksWithStar(ctx context.Context) {
+	client, err := dagger.Connect(ctx, dagger.WithLogOutput(os.Stdout))
+	if err != nil {
+		panic(err)
+	}
+	defer client.Close()
+
+	workdir := client.Host().Workdir()
+
+	dir := client.Directory().WithDirectory(".", workdir, dagger.DirectoryWithDirectoryOpts{
+		Exclude: []string{"build/*"},
+	})
+
+	contents, _ := client.Container().
+		From("alpine:latest").
+		WithMountedDirectory("/host", dir).
+		Exec(dagger.ContainerExecOpts{
+			Args: []string{"ls", "/host/build", "-a"},
+		}).Stdout().Contents(ctx)
+
+	fmt.Println(contents)
+}
+
+// fails
+func Fails(ctx context.Context) {
+	client, err := dagger.Connect(ctx, dagger.WithLogOutput(os.Stdout))
+	if err != nil {
+		panic(err)
+	}
+	defer client.Close()
+
+	workdir := client.Host().Workdir()
+
+	dir := client.Directory().WithDirectory(".", workdir, dagger.DirectoryWithDirectoryOpts{
+		Exclude: []string{"build"},
+	})
+
+	contents, _ := client.Container().
+		From("alpine:latest").
+		WithMountedDirectory("/host", dir).
+		Exec(dagger.ContainerExecOpts{
+			Args: []string{"ls", "/host", "-a"},
+		}).Stdout().Contents(ctx)
+
+	fmt.Println(contents)
 }
